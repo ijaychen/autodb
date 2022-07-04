@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	Tables []*TableConf
+	Tables     []*TableConf
+	Procedures []*ProcedureSt
 )
 
 type (

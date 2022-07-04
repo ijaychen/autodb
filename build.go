@@ -1,8 +1,8 @@
 package autodb
 
 import (
-	"autodb/db"
 	"fmt"
+	"github.com/ijaychen/autodb/db"
 	"log"
 )
 
