@@ -1,8 +1,14 @@
 package column
 
 import (
-	"github.com/ijaychen/autodb"
 	"strings"
+)
+
+const (
+	Int      = "int(10)"
+	TinyInt  = "tinyint(3)"
+	SmallInt = "smallint(5)"
+	BigInt   = "bigint(20)"
 )
 
 type IntColumnSt struct {
@@ -11,13 +17,13 @@ type IntColumnSt struct {
 
 func (st *IntColumnSt) GetSize(ct string) int {
 	switch ct {
-	case autodb.Int:
+	case Int:
 		return 10
-	case autodb.TinyInt:
+	case TinyInt:
 		return 3
-	case autodb.SmallInt:
+	case SmallInt:
 		return 5
-	case autodb.BigInt:
+	case BigInt:
 		return 20
 	default:
 		return 999 //不是int类型，给一个很大的值
@@ -54,13 +60,13 @@ func NewIntColumn(name, t string, unsigned bool, comment string, increment bool,
 	t = strings.ToLower(t)
 
 	if strings.Contains(t, "tiny") {
-		column.Type = autodb.TinyInt
+		column.Type = TinyInt
 	} else if strings.Contains(t, "small") {
-		column.Type = autodb.SmallInt
+		column.Type = SmallInt
 	} else if strings.Contains(t, "big") {
-		column.Type = autodb.BigInt
+		column.Type = BigInt
 	} else {
-		column.Type = autodb.Int
+		column.Type = Int
 	}
 
 	if unsigned {
