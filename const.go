@@ -10,11 +10,6 @@ const (
 	SmallInt = "smallint(5)"
 	BigInt   = "bigint(20)"
 
-	NO  = ""
-	MUL = "MUL"
-	UNI = "UNI"
-	PRI = "PRI"
-
 	MySqlEngine = "INNODB"
 
 	CreateSQLHead = "create table %s \n(\n"

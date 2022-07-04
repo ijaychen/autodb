@@ -1,26 +1,29 @@
-package autodb
+package column
 
-import "log"
+import (
+	"github.com/ijaychen/autodb"
+	"log"
+)
 
 type BlobColumnSt struct {
-	ColumnBaseSt
+	Base
 }
 
 func (st *BlobColumnSt) GetSize(ct string) int {
 	switch ct {
-	case TINYBLOB:
+	case autodb.TINYBLOB:
 		return 256
-	case BLOB:
+	case autodb.BLOB:
 		return 65535
-	case MEDIUMBLOB:
+	case autodb.MEDIUMBLOB:
 		return 16776960
 	default:
 		return 999999999 //不是Blob类型，给一个很大的值
 	}
 }
 
-func (st *BlobColumnSt) IsCompatible(info *MysqlColumnSt) bool {
-	if !st.ColumnBaseSt.IsCompatible(info) {
+func (st *BlobColumnSt) IsCompatible(info *MysqlColumn) bool {
+	if !st.Base.IsCompatible(info) {
 		return false
 	}
 	if st.GetSize(st.Type) < st.GetSize(info.Type) {
@@ -29,11 +32,11 @@ func (st *BlobColumnSt) IsCompatible(info *MysqlColumnSt) bool {
 	return true
 }
 
-func NewBlobColumn(name, t, comment string) ColumnInterface {
+func NewBlobColumn(name, t, comment string) IColumn {
 	column := &BlobColumnSt{}
 	column.Name = name
 	column.Comment = comment
-	if t != TINYBLOB && t != BLOB && t != MEDIUMBLOB {
+	if t != autodb.TINYBLOB && t != autodb.BLOB && t != autodb.MEDIUMBLOB {
 		log.Fatalf("column type error!! name:%s t:%s comment:%s", name, t, comment)
 	}
 	column.Type = t

@@ -1,26 +1,35 @@
-package autodb
+package column
 
 import (
 	"fmt"
 )
 
-type ColumnInterface interface {
+type IColumn interface {
 	GetName() string
 	CreateColumnSQL() string
 	AddColumnSQL(tblName string) string
 	ChangeColumnSQL(tblName string) string
 	SetPlace(before string)
 	SetFirst()
-	IsEqual(info *MysqlColumnSt) bool
-	IsCompatible(info *MysqlColumnSt) bool
+	IsEqual(info *MysqlColumn) bool
+	IsCompatible(info *MysqlColumn) bool
 	IsAutoIncrement() bool
 }
 
-type ColumnBaseSt struct {
+type MysqlColumn struct {
+	Field   string
+	Type    string
+	Null    string
+	Key     string
+	Default string
+	Extra   string
+}
+
+type Base struct {
 	Name          string //字段名字
 	Type          string //字段类型
 	Null          string //是否默认为空
-	Key           string //key
+	Key           string //columnkey
 	Extra         string //extra
 	Default       string //默认值
 	Comment       string //注释
@@ -30,15 +39,15 @@ type ColumnBaseSt struct {
 	AutoIncrement bool
 }
 
-func (st *ColumnBaseSt) GetName() string {
+func (st *Base) GetName() string {
 	return st.Name
 }
 
-func (st *ColumnBaseSt) IsAutoIncrement() bool {
+func (st *Base) IsAutoIncrement() bool {
 	return st.AutoIncrement
 }
 
-func (st *ColumnBaseSt) CreateColumnSQL() string {
+func (st *Base) CreateColumnSQL() string {
 	def := "not null" + st.Extra
 	if len(st.Default) > 0 {
 		def = "default " + st.Default
@@ -46,7 +55,7 @@ func (st *ColumnBaseSt) CreateColumnSQL() string {
 	return fmt.Sprintf("%s %s %s comment '%s'", st.Name, st.Type, def, st.Comment)
 }
 
-func (st *ColumnBaseSt) AddColumnSQL(tblName string) string {
+func (st *Base) AddColumnSQL(tblName string) string {
 	def := "not null" + st.Extra
 	if len(st.Default) > 0 {
 		def = "default " + st.Default
@@ -54,7 +63,7 @@ func (st *ColumnBaseSt) AddColumnSQL(tblName string) string {
 	return fmt.Sprintf("alter table %s add %s %s %s comment '%s';", tblName, st.Name, st.Type, def, st.Comment)
 }
 
-func (st *ColumnBaseSt) ChangeColumnSQL(tblName string) string {
+func (st *Base) ChangeColumnSQL(tblName string) string {
 	def := "not null" + st.Extra
 	if len(st.Default) > 0 {
 		def = "default " + st.Default
@@ -68,15 +77,15 @@ func (st *ColumnBaseSt) ChangeColumnSQL(tblName string) string {
 	return fmt.Sprintf("alter table %s modify %s %s %s comment '%s' %s;", tblName, st.Name, st.Type, def, st.Comment, afterSQL)
 }
 
-func (st *ColumnBaseSt) SetPlace(before string) {
+func (st *Base) SetPlace(before string) {
 	st.Before = before
 }
 
-func (st *ColumnBaseSt) SetFirst() {
+func (st *Base) SetFirst() {
 	st.First = true
 }
 
-func (st *ColumnBaseSt) IsEqual(info *MysqlColumnSt) bool {
+func (st *Base) IsEqual(info *MysqlColumn) bool {
 	if st.Default != info.Default {
 		if !(st.Default == "null" && info.Null == "YES") {
 			return false
@@ -89,7 +98,7 @@ func (st *ColumnBaseSt) IsEqual(info *MysqlColumnSt) bool {
 }
 
 //是否兼容
-func (st *ColumnBaseSt) IsCompatible(info *MysqlColumnSt) bool {
+func (st *Base) IsCompatible(info *MysqlColumn) bool {
 	if st.Type != info.Type {
 		return false
 	}

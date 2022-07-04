@@ -1,4 +1,4 @@
-package autodb
+package column
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 )
 
 type StringColumnSt struct {
-	ColumnBaseSt
+	Base
 }
 
 func find(s string) string {
@@ -20,7 +20,7 @@ func find(s string) string {
 }
 
 //是否兼容
-func (st *StringColumnSt) IsCompatible(info *MysqlColumnSt) bool {
+func (st *StringColumnSt) IsCompatible(info *MysqlColumn) bool {
 	size := find(info.Type)
 	//r := regexp.MustCompile(`\(.*?\)`)
 	//size := r.FindStringSubmatch(info.Type)
@@ -37,7 +37,7 @@ func (st *StringColumnSt) IsCompatible(info *MysqlColumnSt) bool {
 	return true
 }
 
-func NewStringColumn(name string, size int, comment string, def string) ColumnInterface {
+func NewStringColumn(name string, size int, comment string, def string) IColumn {
 	column := &StringColumnSt{}
 	column.Name = name
 	column.Type = fmt.Sprintf("varchar(%d)", size)

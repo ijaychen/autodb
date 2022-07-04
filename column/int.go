@@ -1,28 +1,31 @@
-package autodb
+package column
 
-import "strings"
+import (
+	"github.com/ijaychen/autodb"
+	"strings"
+)
 
 type IntColumnSt struct {
-	ColumnBaseSt
+	Base
 }
 
 func (st *IntColumnSt) GetSize(ct string) int {
 	switch ct {
-	case Int:
+	case autodb.Int:
 		return 10
-	case TinyInt:
+	case autodb.TinyInt:
 		return 3
-	case SmallInt:
+	case autodb.SmallInt:
 		return 5
-	case BigInt:
+	case autodb.BigInt:
 		return 20
 	default:
 		return 999 //不是int类型，给一个很大的值
 	}
 }
 
-func (st *IntColumnSt) IsCompatible(info *MysqlColumnSt) bool {
-	if !st.ColumnBaseSt.IsCompatible(info) {
+func (st *IntColumnSt) IsCompatible(info *MysqlColumn) bool {
+	if !st.Base.IsCompatible(info) {
 		return false
 	}
 	if st.GetSize(st.Type) < st.GetSize(info.Type) {
@@ -32,7 +35,7 @@ func (st *IntColumnSt) IsCompatible(info *MysqlColumnSt) bool {
 	return true
 }
 
-func NewIntColumn(name, t string, unsigned bool, comment string, increment bool, def string) ColumnInterface {
+func NewIntColumn(name, t string, unsigned bool, comment string, increment bool, def string) IColumn {
 	column := &IntColumnSt{}
 	column.Name = name
 	column.Comment = comment
@@ -51,13 +54,13 @@ func NewIntColumn(name, t string, unsigned bool, comment string, increment bool,
 	t = strings.ToLower(t)
 
 	if strings.Contains(t, "tiny") {
-		column.Type = TinyInt
+		column.Type = autodb.TinyInt
 	} else if strings.Contains(t, "small") {
-		column.Type = SmallInt
+		column.Type = autodb.SmallInt
 	} else if strings.Contains(t, "big") {
-		column.Type = BigInt
+		column.Type = autodb.BigInt
 	} else {
-		column.Type = Int
+		column.Type = autodb.Int
 	}
 
 	if unsigned {

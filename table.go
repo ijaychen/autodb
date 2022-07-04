@@ -2,57 +2,56 @@ package autodb
 
 import (
 	"fmt"
+	"github.com/ijaychen/autodb/column"
+	"github.com/ijaychen/autodb/columnkey"
 	"github.com/ijaychen/autodb/db"
+	"github.com/ijaychen/autodb/iface"
 	"log"
 	"strings"
 )
 
-var tables = make(map[string]*TableSt)
+var tables = make(map[string]*Table)
 
-type MysqlColumnSt struct {
-	Field   string
-	Type    string
-	Null    string
-	Key     string
-	Default string
-	Extra   string
+type MysqlTable struct {
+	Sequence []*column.MysqlColumn
+	Columns  map[string]*column.MysqlColumn
 }
 
-type TableInfoSt struct {
-	Sequence []*MysqlColumnSt
-	Columns  map[string]*MysqlColumnSt
-}
-
-type TableSt struct {
+type Table struct {
 	Name     string
 	Comment  string
-	Columns  map[string]ColumnInterface
-	Sequence []ColumnInterface
+	Columns  map[string]column.IColumn
+	Sequence []column.IColumn
 	Exists   bool
 	pris     []string
-	keys     map[string]*FieldKey
-	sqlInfo  *TableInfoSt
+	keys     map[string]iface.IKey
+	sqlInfo  *MysqlTable
 	hasData  int8
 }
 
-func NewTableSt(name, comment string, fieldCount int) *TableSt {
-	table := &TableSt{
+func NewTableSt(name, comment string, fieldCount int) *Table {
+	table := &Table{
 		Name: name, Comment: comment, hasData: -1,
 	}
-	table.Sequence = make([]ColumnInterface, 0, fieldCount)
-	table.Columns = make(map[string]ColumnInterface)
-	table.keys = make(map[string]*FieldKey)
+	table.Sequence = make([]column.IColumn, 0, fieldCount)
+	table.Columns = make(map[string]column.IColumn)
+	table.keys = make(map[string]iface.IKey)
 	return table
 }
 
-func (st *TableSt) AddKey(key *FieldKey) {
-	if key.Type == PRI {
-		st.pris = append(st.pris, key.Name)
-	}
-	st.keys[key.Name] = key
+func (st *Table) GetName() string {
+	return st.Name
 }
 
-func (st *TableSt) CreatePRIKeySQL() string {
+func (st *Table) AddKey(key iface.IKey) {
+	name := key.GetName()
+	if key.GetType() == columnkey.PRI {
+		st.pris = append(st.pris, name)
+	}
+	st.keys[name] = key
+}
+
+func (st *Table) CreatePriKeySQL() string {
 	if len(st.pris) <= 0 {
 		return ""
 	}
@@ -61,7 +60,7 @@ func (st *TableSt) CreatePRIKeySQL() string {
 	return fmt.Sprintf("PRIMARY KEY (%s)", names)
 }
 
-func (st *TableSt) AddPRIKeySQL() string {
+func (st *Table) AddPriKeySQL() string {
 	if len(st.pris) <= 0 {
 		return ""
 	}
@@ -70,7 +69,7 @@ func (st *TableSt) AddPRIKeySQL() string {
 	return fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s)", st.Name, names)
 }
 
-func (st *TableSt) AddColumn(column ColumnInterface) {
+func (st *Table) AddColumn(column column.IColumn) {
 	name := column.GetName()
 	if _, exists := st.Columns[name]; exists {
 		log.Fatalf("%s表中含有重复字段%s", st.Name, name)
@@ -79,7 +78,7 @@ func (st *TableSt) AddColumn(column ColumnInterface) {
 	st.Sequence = append(st.Sequence, column)
 }
 
-func (st *TableSt) CreateTableSQL() string {
+func (st *Table) CreateTableSQL() string {
 	sqlVec := make([]string, 0, len(st.Sequence))
 	for _, column := range st.Sequence {
 		sqlVec = append(sqlVec, column.CreateColumnSQL())
@@ -97,7 +96,7 @@ func (st *TableSt) CreateTableSQL() string {
 	return head + strings.Join(sqlVec, ",\n") + tail
 }
 
-func (st *TableSt) HasTable() bool {
+func (st *Table) HasTable() bool {
 	if st.Exists {
 		return true
 	}
@@ -111,7 +110,7 @@ func (st *TableSt) HasTable() bool {
 	return st.Exists
 }
 
-func (st *TableSt) HasData() bool {
+func (st *Table) HasData() bool {
 	if st.hasData != -1 {
 		return st.hasData == 1
 	}
@@ -131,7 +130,7 @@ func (st *TableSt) HasData() bool {
 	return st.hasData == 1
 }
 
-func (st *TableSt) Build() {
+func (st *Table) Build() {
 	st.Check()
 	if !st.HasTable() {
 		st.Create()
@@ -140,27 +139,27 @@ func (st *TableSt) Build() {
 	}
 }
 
-func (st *TableSt) Check() {
+func (st *Table) Check() {
 	if 0 == len(st.Columns) {
-		log.Fatalf("%s表配置中没有字段", st.Name)
+		log.Fatalf("table[%s] is empty!", st.Name)
 	}
 	for name, key := range st.keys {
-		if _, exists := st.Columns[key.Name]; !exists {
-			log.Fatalf("%s %s 该key的对应字段不存在", st.Name, name)
+		if _, exists := st.Columns[key.GetName()]; !exists {
+			log.Fatalf("table[%s] column is not exists! key[%s]", st.Name, name)
 		}
 	}
 
-	// there can be only one auto column and it must be defined as a key
+	// there can be only one auto column, and it must be defined as a columnKey
 	autoIncrement := false
 	for name, column := range st.Columns {
 		if column.IsAutoIncrement() {
 			// only one
 			if autoIncrement {
-				log.Fatalf("%s只能有一个auto_increment字段", name)
+				log.Fatalf("table[%s] %s can be only one auto column", st.Name, name)
 			}
-			// must be defined as a key
+			// must be defined as a columnKey
 			if _, exists := st.keys[name]; !exists {
-				log.Fatalf("%s auto_increment字段必须有索引", name)
+				log.Fatalf("column %s auto_increment must be index", name)
 			}
 			autoIncrement = true
 		}
@@ -193,19 +192,19 @@ func (st *TableSt) Check() {
 		}
 		key := st.keys[info.Field]
 		//对于已经存在的约束不能修改, 断言约束相同
-		if nil != key && info.Key != NO {
-			if !key.IsEqual(info) {
+		if nil != key && info.Key != columnkey.NO {
+			if !key.IsEqual(info.Key) {
 				log.Fatalf("%s %s不能修改字段约束", st.Name, info.Field)
 			}
 		}
 	}
 }
 
-func (st *TableSt) Create() {
-	Exec(st.CreateTableSQL(), true)
+func (st *Table) Create() {
+	execSQL(st.CreateTableSQL(), true)
 }
 
-func (st *TableSt) Change() {
+func (st *Table) Change() {
 	bChange := false
 	info := st.GetTableColumnInfo(false)
 	columns := info.Columns
@@ -214,23 +213,23 @@ func (st *TableSt) Change() {
 		//该列已经存在，检查是否需要修改
 		if mysqlInfo, ok := columns[name]; ok {
 			if !column.IsEqual(mysqlInfo) {
-				Exec(column.ChangeColumnSQL(st.Name), true)
+				execSQL(column.ChangeColumnSQL(st.Name), true)
 			}
 		} else { //不存在则添加
-			Exec(column.AddColumnSQL(st.Name), true)
+			execSQL(column.AddColumnSQL(st.Name), true)
 			bChange = true
 		}
 	}
 	//需要删除的column和key
 	for _, mysqlInfo := range columns {
 		if _, ok := st.Columns[mysqlInfo.Field]; !ok {
-			Exec(DropColumnSQL(st.Name, mysqlInfo.Field), true)
+			st.CreateDropColumnSQL(mysqlInfo.Field)
 			bChange = true
 			//column不需要删除时再检测key (因为column删除了key也会删除)
-		} else if mysqlInfo.Key != NO {
+		} else if mysqlInfo.Key != columnkey.NO {
 			//这个key以前有现在没了
 			if _, ok := st.keys[mysqlInfo.Field]; !ok {
-				Exec(DropKeySQL(st.Name, mysqlInfo.Field, mysqlInfo.Type), true)
+				st.DropKeySQL(mysqlInfo.Field, mysqlInfo.Type)
 			}
 		}
 	}
@@ -244,10 +243,10 @@ func (st *TableSt) Change() {
 	for name, key := range st.keys {
 		mysqlInfo, ok := columns[name]
 		if !ok {
-			log.Fatalf("table %s add key error!", st.Name)
+			log.Fatalf("table %s add columnkey error!", st.Name)
 		}
-		if mysqlInfo.Key == NO {
-			Exec(key.AddKeySQL(st), true)
+		if mysqlInfo.Key == columnkey.NO {
+			execSQL(key.AddKeySQL(st), true)
 		}
 	}
 
@@ -260,18 +259,17 @@ func (st *TableSt) Change() {
 			} else {
 				column.SetPlace(st.Sequence[i-1].GetName())
 			}
-			Exec(column.ChangeColumnSQL(st.Name), true)
+			execSQL(column.ChangeColumnSQL(st.Name), true)
 		}
 	}
 }
 
-/////////////////////////////////
-func (st *TableSt) GetTableColumnInfo(reset bool) *TableInfoSt {
+func (st *Table) GetTableColumnInfo(reset bool) *MysqlTable {
 	if nil != st.sqlInfo && !reset {
 		return st.sqlInfo
 	}
-	st.sqlInfo = new(TableInfoSt)
-	st.sqlInfo.Columns = make(map[string]*MysqlColumnSt)
+	st.sqlInfo = new(MysqlTable)
+	st.sqlInfo.Columns = make(map[string]*column.MysqlColumn)
 	err := db.OrmEngine.SQL(fmt.Sprintf("show columns from %s;", st.Name)).Find(&st.sqlInfo.Sequence)
 	if nil != err {
 		log.Fatalf("查询失败！error:%s", err)
@@ -280,4 +278,25 @@ func (st *TableSt) GetTableColumnInfo(reset bool) *TableInfoSt {
 		st.sqlInfo.Columns[ret.Field] = ret
 	}
 	return st.sqlInfo
+}
+
+func (st *Table) CreateDropColumnSQL(columnName string) {
+	execSQL(fmt.Sprintf("alter table %s drop column %s;", st.Name, columnName), true)
+}
+
+func (st *Table) DropKeySQL(columnName, kt string) {
+	var sql string
+	switch kt {
+	case columnkey.MUL:
+		sql = fmt.Sprintf("alter table %s drop index %s", st.Name, columnName)
+	case columnkey.PRI:
+		sql = fmt.Sprintf("alter table %s drop primary columnkey", st.Name)
+	case columnkey.UNI:
+		sql = fmt.Sprintf("alter table %s drop index %s", st.Name, columnName)
+	default:
+		log.Fatalf("drop columnkey sql error")
+	}
+	if "" != sql {
+		execSQL(sql, true)
+	}
 }

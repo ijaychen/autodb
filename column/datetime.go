@@ -1,18 +1,18 @@
-package autodb
+package column
 
 type DateTimeColumnSt struct {
-	ColumnBaseSt
+	Base
 }
 
-func (st *DateTimeColumnSt) IsEqual(info *MysqlColumnSt) bool {
+func (st *DateTimeColumnSt) IsEqual(info *MysqlColumn) bool {
 	return st.Type == info.Type
 }
 
-func (st *DateTimeColumnSt) IsCompatible(info *MysqlColumnSt) bool {
+func (st *DateTimeColumnSt) IsCompatible(info *MysqlColumn) bool {
 	return st.IsEqual(info)
 }
 
-func NewDateTimeColumn(name string, comment string) ColumnInterface {
+func NewDateTimeColumn(name string, comment string) IColumn {
 	column := &DateTimeColumnSt{}
 	column.Name = name
 	column.Type = "datetime"
