@@ -33,7 +33,7 @@ type (
 	TableConf struct {
 		Name    string
 		Comment string
-		Fields  []*ColumnConf
+		Columns []*ColumnConf
 		Keys    []*KeyConf
 	}
 )
@@ -54,8 +54,8 @@ func loadTableConf(file string) bool {
 
 func ParseTableConf() {
 	for _, line := range Tables {
-		table := NewTableSt(line.Name, line.Comment, len(line.Fields))
-		for _, field := range line.Fields {
+		table := NewTableSt(line.Name, line.Comment, len(line.Columns))
+		for _, field := range line.Columns {
 			var col column.IColumn
 			if field.Type == "varchar" {
 				col = column.NewStringColumn(field.Name, field.Size, field.Comment, field.Default)
