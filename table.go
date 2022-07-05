@@ -5,16 +5,16 @@ import (
 	"github.com/ijaychen/autodb/column"
 	"github.com/ijaychen/autodb/columnkey"
 	"github.com/ijaychen/autodb/db"
-	"github.com/ijaychen/autodb/iface"
 	"log"
+	"sort"
 	"strings"
 )
 
 var tables = make(map[string]*Table)
 
 type MysqlTable struct {
-	Sequence []*column.MysqlColumn
-	Columns  map[string]*column.MysqlColumn
+	Columns map[string]*column.MysqlColumn
+	Keys    map[string]*TableKey
 }
 
 type Table struct {
@@ -23,8 +23,7 @@ type Table struct {
 	Columns  map[string]column.IColumn
 	Sequence []column.IColumn
 	Exists   bool
-	pris     []string
-	keys     map[string]iface.IKey
+	tblKeys  map[string]*TableKey
 	sqlInfo  *MysqlTable
 	hasData  int8
 }
@@ -35,38 +34,12 @@ func NewTableSt(name, comment string, fieldCount int) *Table {
 	}
 	table.Sequence = make([]column.IColumn, 0, fieldCount)
 	table.Columns = make(map[string]column.IColumn)
-	table.keys = make(map[string]iface.IKey)
+	table.tblKeys = make(map[string]*TableKey)
 	return table
 }
 
 func (st *Table) GetName() string {
 	return st.Name
-}
-
-func (st *Table) AddKey(key iface.IKey) {
-	name := key.GetName()
-	if key.GetType() == columnkey.PRI {
-		st.pris = append(st.pris, name)
-	}
-	st.keys[name] = key
-}
-
-func (st *Table) CreatePriKeySQL() string {
-	if len(st.pris) <= 0 {
-		return ""
-	}
-	names := strings.Join(st.pris, ", ")
-	st.pris = make([]string, 0)
-	return fmt.Sprintf("PRIMARY KEY (%s)", names)
-}
-
-func (st *Table) AddPriKeySQL() string {
-	if len(st.pris) <= 0 {
-		return ""
-	}
-	names := strings.Join(st.pris, ", ")
-	st.pris = make([]string, 0)
-	return fmt.Sprintf("ALTER TABLE %s ADD PRIMARY KEY (%s)", st.Name, names)
 }
 
 func (st *Table) AddColumn(column column.IColumn) {
@@ -84,8 +57,8 @@ func (st *Table) CreateTableSQL() string {
 		sqlVec = append(sqlVec, column.CreateColumnSQL())
 	}
 
-	for _, key := range st.keys {
-		sql := key.CreateKeySQL(st)
+	for _, key := range st.tblKeys {
+		sql := key.CreateKeySQL()
 		if len(sql) > 0 {
 			sqlVec = append(sqlVec, sql)
 		}
@@ -143,9 +116,11 @@ func (st *Table) Check() {
 	if 0 == len(st.Columns) {
 		log.Fatalf("table[%s] is empty!", st.Name)
 	}
-	for name, key := range st.keys {
-		if _, exists := st.Columns[key.GetName()]; !exists {
-			log.Fatalf("table[%s] column is not exists! key[%s]", st.Name, name)
+	for name, key := range st.tblKeys {
+		for _, column := range key.ColumnVec {
+			if _, exists := st.Columns[column]; !exists {
+				log.Fatalf("table[%s] column is not exists! key[%s]", st.Name, name)
+			}
 		}
 	}
 
@@ -157,10 +132,21 @@ func (st *Table) Check() {
 			if autoIncrement {
 				log.Fatalf("table[%s] %s can be only one auto column", st.Name, name)
 			}
+
+			found := false
+			if keys, ok := st.tblKeys[columnkey.PRI]; ok {
+				for _, line := range keys.ColumnVec {
+					if line == name {
+						found = true
+						break
+					}
+				}
+			}
 			// must be defined as a columnKey
-			if _, exists := st.keys[name]; !exists {
+			if !found {
 				log.Fatalf("column %s auto_increment must be index", name)
 			}
+
 			autoIncrement = true
 		}
 	}
@@ -174,6 +160,8 @@ func (st *Table) Check() {
 	if nil == sqlInfo {
 		log.Fatalf("%s table column info is nil", st.Name)
 	}
+
+	// 检查字段
 	for _, info := range sqlInfo.Columns {
 		column, exists := st.Columns[info.Field]
 		//以前有现在也有的column需要兼容判定
@@ -181,7 +169,6 @@ func (st *Table) Check() {
 			if !column.IsEqual(info) {
 				if !column.IsCompatible(info) {
 					log.Fatalf("%s %s字段已存在，新旧类型不兼容", st.Name, column.GetName())
-
 				}
 			}
 		} else { //以前有现在没有，需要删除
@@ -190,11 +177,21 @@ func (st *Table) Check() {
 				log.Fatalf("%s 表已使用，不允许删除字段", st.Name)
 			}
 		}
-		key := st.keys[info.Field]
-		//对于已经存在的约束不能修改, 断言约束相同
-		if nil != key && info.Key != columnkey.NO {
-			if !key.IsEqual(info.Key) {
-				log.Fatalf("%s %s不能修改字段约束", st.Name, info.Field)
+	}
+	// 检查索引， 不删除已存在的索引
+	for _, info := range sqlInfo.Keys {
+		newKey, ok := st.tblKeys[info.Name]
+		if !ok {
+			log.Fatalf("%s %s不能删除已存在的索引", st.Name, info.Name)
+		}
+		if info.Type != newKey.Type {
+			log.Fatalf("%s %s不能修改已存在的索引类型", st.Name, info.Name)
+		}
+		for _, line1 := range info.ColumnVec {
+			for _, line2 := range newKey.ColumnVec {
+				if line1 != line2 {
+					log.Fatalf("%s %s不能修改已存在的索引", st.Name, info.Name)
+				}
 			}
 		}
 	}
@@ -220,33 +217,24 @@ func (st *Table) Change() {
 			bChange = true
 		}
 	}
-	//需要删除的column和key
+	//需要删除的column
 	for _, mysqlInfo := range columns {
 		if _, ok := st.Columns[mysqlInfo.Field]; !ok {
 			st.CreateDropColumnSQL(mysqlInfo.Field)
 			bChange = true
-			//column不需要删除时再检测key (因为column删除了key也会删除)
-		} else if mysqlInfo.Key != columnkey.NO {
-			//这个key以前有现在没了
-			if _, ok := st.keys[mysqlInfo.Field]; !ok {
-				st.DropKeySQL(mysqlInfo.Field, mysqlInfo.Type)
-			}
 		}
 	}
 
+	// 表变化了重新查询一次数据库表信息
 	if bChange {
 		info = st.GetTableColumnInfo(true)
 		columns = info.Columns
 	}
 	// key的添加放在删除后，否则可能会冲突
 	// 已经检查过key的合法性，所以对不存在的key直接添加，这里不处理 PRIMARY KEY之前只有一个，现在有两个的问题
-	for name, key := range st.keys {
-		mysqlInfo, ok := columns[name]
-		if !ok {
-			log.Fatalf("table %s add columnkey error!", st.Name)
-		}
-		if mysqlInfo.Key == columnkey.NO {
-			execSQL(key.AddKeySQL(st), true)
+	for _, key := range st.tblKeys {
+		if _, exist := info.Keys[key.Name]; !exist {
+			execSQL(key.AddKeySQL(st.Name), true)
 		}
 	}
 
@@ -270,13 +258,37 @@ func (st *Table) GetTableColumnInfo(reset bool) *MysqlTable {
 	}
 	st.sqlInfo = new(MysqlTable)
 	st.sqlInfo.Columns = make(map[string]*column.MysqlColumn)
-	err := db.OrmEngine.SQL(fmt.Sprintf("show columns from %s;", st.Name)).Find(&st.sqlInfo.Sequence)
+
+	columns := make([]*column.MysqlColumn, 0)
+	err := db.OrmEngine.SQL(fmt.Sprintf("show columns from %s;", st.Name)).Find(&columns)
 	if nil != err {
 		log.Fatalf("查询失败！error:%s", err)
 	}
-	for _, ret := range st.sqlInfo.Sequence {
+
+	for _, ret := range columns {
 		st.sqlInfo.Columns[ret.Field] = ret
 	}
+
+	// keys
+	vec := make([]*MysqlKeyDesc, 0)
+	db.OrmEngine.SQL(fmt.Sprintf("show index from %s;", st.Name)).Find(&vec)
+	sort.Slice(vec, func(i, j int) bool {
+		return vec[i].SeqInIndex < vec[j].SeqInIndex
+	})
+	st.sqlInfo.Keys = make(map[string]*TableKey)
+	for _, line := range vec {
+		if line.KeyName == "PRIMARY" {
+			line.KeyName = columnkey.PRI
+		}
+		cur, exist := st.sqlInfo.Keys[line.KeyName]
+		if !exist {
+			cur = createTableKeyByMysqlData(line)
+			st.sqlInfo.Keys[line.KeyName] = cur
+		} else {
+			cur.ColumnVec = append(cur.ColumnVec, line.ColumnName)
+		}
+	}
+
 	return st.sqlInfo
 }
 

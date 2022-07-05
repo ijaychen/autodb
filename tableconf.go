@@ -3,7 +3,6 @@ package autodb
 import (
 	"encoding/json"
 	"github.com/ijaychen/autodb/column"
-	"github.com/ijaychen/autodb/columnkey"
 	"io/ioutil"
 	"log"
 	"strings"
@@ -25,16 +24,11 @@ type (
 		Default       string
 	}
 
-	KeyConf struct {
-		Type string `json:"type"`
-		Name string `json:"name"`
-	}
-
 	TableConf struct {
 		Name    string
 		Comment string
 		Columns []*ColumnConf
-		Keys    []*KeyConf
+		Keys    []*TableKey
 	}
 )
 
@@ -71,9 +65,7 @@ func ParseTableConf() {
 			table.AddColumn(col)
 		}
 		for _, key := range line.Keys {
-			if ik := columnkey.CreateKey(key.Type, key.Name); nil != ik {
-				table.AddKey(ik)
-			}
+			table.tblKeys[key.Name] = key.Copy()
 		}
 		tables[line.Name] = table
 	}

@@ -25,6 +25,12 @@ type MysqlColumn struct {
 	Extra   string
 }
 
+type MysqlKey struct {
+	KeyName    string // 索引名字
+	SeqInIndex int
+	ColumnName string
+}
+
 type Base struct {
 	Name          string //字段名字
 	Type          string //字段类型
