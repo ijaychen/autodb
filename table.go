@@ -187,11 +187,15 @@ func (st *Table) Check() {
 		if info.Type != newKey.Type {
 			log.Fatalf("%s %s不能修改已存在的索引类型", st.Name, info.Name)
 		}
-		for _, line1 := range info.ColumnVec {
-			for _, line2 := range newKey.ColumnVec {
-				if line1 != line2 {
-					log.Fatalf("%s %s不能修改已存在的索引", st.Name, info.Name)
-				}
+		size := len(info.ColumnVec)
+		if len(newKey.ColumnVec) != size {
+			log.Fatalf("表[%s] 索引[%s]与数据库中的字段不匹配", st.Name, info.Name)
+		}
+		for i := 0; i < size; i++ {
+			old := info.ColumnVec[i]
+			cur := newKey.ColumnVec[i]
+			if cur != old {
+				log.Fatalf("表[%s]不能修改已存在的索引[%s]", st.Name, info.Name)
 			}
 		}
 	}
